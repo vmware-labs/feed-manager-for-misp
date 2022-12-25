@@ -22,5 +22,5 @@ def get_hash_type(hash_value: str) -> Optional[str]:
 
 def print_dependency_error_and_raise(exception: Exception):
     """Print the error of the missing dependency and re-raise."""
-    print("Only 'consumer.py' module is available without installing the 'pymisp' extra dependency")
+    print("Only 'consumer.py' and 'consume_feed.py' do not require the 'misp' extra dependency")
     raise exception

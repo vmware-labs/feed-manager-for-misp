@@ -94,7 +94,9 @@ class TagUtils:
         cls.add_tag_to_attribute(attribute, tag)
 
     @classmethod
-    def add_tag_to_attribute(cls, attribute: pymisp.MISPAttribute, tag: Union[str, pymisp.MISPTag]):
+    def add_tag_to_attribute(
+        cls, attribute: pymisp.MISPAttribute, tag: Union[str, pymisp.MISPTag]
+    ):
         """Add a tag to an attribute."""
         tag = cls.validate_tag(tag)
         attribute.add_tag(tag)
@@ -128,7 +130,7 @@ class TagUtils:
             tag = tag.name
         try:
             category, value = tag.split("=")
-            return category, value.strip("\"")
+            return category, value.strip('"')
         except (KeyError, IndexError, ValueError):
             return None, None
 
@@ -181,9 +183,7 @@ class SightingUtils:
     @classmethod
     def timestamp_to_date(cls, timestamp: int) -> datetime.datetime:
         """Convert a timestamp to datetime object."""
-        return datetime.datetime.utcfromtimestamp(timestamp).replace(
-            tzinfo=datetime.timezone.utc
-        )
+        return datetime.datetime.utcfromtimestamp(timestamp).replace(tzinfo=datetime.timezone.utc)
 
     @classmethod
     def get_sightings_date(
@@ -256,9 +256,11 @@ class SightingUtils:
         novel_objects = []
         for sighting_data in novel_sightings:
             sighting = pymisp.MISPSighting()
-            sighting.from_dict(**{
-                "timestamp": sighting_data.timestamp(),
-            })
+            sighting.from_dict(
+                **{
+                    "timestamp": sighting_data.timestamp(),
+                }
+            )
             novel_objects.append(sighting)
         return misp_object, novel_objects
 

@@ -17,8 +17,7 @@ from typing import Tuple
 def get_date_range(start_date: datetime.date, end_date: datetime.date) -> List[datetime.date]:
     """Get a range of date objects with no gaps."""
     ranges = {
-        start_date + datetime.timedelta(days=x)
-        for x in range((end_date - start_date).days)
+        start_date + datetime.timedelta(days=x) for x in range((end_date - start_date).days)
     }
     ranges.add(start_date)
     ranges.add(end_date)
@@ -32,7 +31,9 @@ def compute_statistics(indicators: List[Dict]) -> Dict[datetime.date, Tuple[int,
     date_to_attribute_uuids = collections.defaultdict(list)
     for indicator in indicators:
         attribute_uuid_to_tags[indicator["attribute_uuid"]].update(indicator["tags"])
-        date_object = datetime.datetime.strptime(indicator["timestamp"], consumer.FeedParser.DEFAULT_FMT).date()
+        date_object = datetime.datetime.strptime(
+            indicator["timestamp"], consumer.FeedParser.DEFAULT_FMT
+        ).date()
         date_to_attribute_uuids[date_object].append(indicator["attribute_uuid"])
     try:
         min_date = min(date_to_attribute_uuids)
@@ -107,7 +108,7 @@ def main():
     for indicator in indicators:
         print(json.dumps(indicator, indent=True))
 
-    print(f"Computing statistics")
+    print("Computing statistics")
     try:
         statistics = compute_statistics(indicators)
     except KeyError:

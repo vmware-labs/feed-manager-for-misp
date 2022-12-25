@@ -53,11 +53,9 @@ TELEMETRY_ITEM = {
         "Anomaly: AI detected possible malicious code reuse",
         "Evasion: Detecting the presence of AntiMalware Scan Interface (AMSI)",
         "Execution: Subject crash detected",
-        "Signature: Potentially malicious application/program"
+        "Signature: Potentially malicious application/program",
     ],
-    "analysis.mitre_techniques": [
-        "T1497: Virtualization/Sandbox Evasion"
-    ],
+    "analysis.mitre_techniques": ["T1497: Virtualization/Sandbox Evasion"],
     "task.score": 70,
     "customer.region": "AMER",
     "utc_timestamp": 1663568636000,

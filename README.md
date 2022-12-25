@@ -106,6 +106,13 @@ And finally, an example of consuming a telemetry feed:
 > }
 ```
 
+## Install
+
+This package is available on PyPI, and it can be installed with `pip`:
+```bash
+pip install misp-feed-manager
+```
+
 ## Contributing
 
 The feed-manager-for-misp project team welcomes contributions from the community. Before you start working with feed-manager-for-misp, please

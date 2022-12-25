@@ -81,7 +81,7 @@ class ObjectFactory:
         ret = []
         for object_tag in tags:
             tag_name, tag_value = object_tag.split("=")
-            tag_value = tag_value.strip("\"")
+            tag_value = tag_value.strip('"')
             if tag_name == "misp-galaxy:mitre-attack-pattern":
                 technique, technique_id = tag_value.split(" - ")
                 ret.append(f"{technique_id}: {technique}")
@@ -121,17 +121,21 @@ class FeedParser(abc.ABC):
 
     DEFAULT_FMT = "%Y-%m-%d %H:%M:%S"
 
-    FILE_INDICATOR_TYPES = frozenset([
-        "md5",
-        "sha1",
-        "sha256",
-    ])
+    FILE_INDICATOR_TYPES = frozenset(
+        [
+            "md5",
+            "sha1",
+            "sha256",
+        ]
+    )
 
-    NETWORK_INDICATOR_TYPES = frozenset([
-        "domain",
-        "ip",
-        "url",
-    ])
+    NETWORK_INDICATOR_TYPES = frozenset(
+        [
+            "domain",
+            "ip",
+            "url",
+        ]
+    )
 
     FILE_OBJECT_TYPE = "file"
 
@@ -310,7 +314,7 @@ class AbstractFeedConsumer(abc.ABC):
                         if self._filter_indicator(indicator, attribute_type, galaxy_name):
                             ret.append(indicator)
             except EmptyFeedException:
-                self._logger.warning(f"The feed '%s' is empty", event_data['Event']['info'])
+                self._logger.warning("The feed '%s' is empty", event_data["Event"]["info"])
         return ret
 
     def __init__(self):
@@ -340,14 +344,16 @@ class LocalFeedConsumer(AbstractFeedConsumer):
 class RemoteFeedConsumer(AbstractFeedConsumer):
     """Consumer using a remote (HTTP) source."""
 
+    DEFAULT_TIMEOUT = 60
+
     def load_manifest(self) -> Dict:
         """Implement interface."""
-        ret = requests.get(f"{self._base_url}/manifest.json")
+        ret = requests.get(f"{self._base_url}/manifest.json", timeout=self.DEFAULT_TIMEOUT)
         return ret.json()
 
     def load_event(self, event_uuid: str) -> Dict:
         """Implement interface."""
-        ret = requests.get(f"{self._base_url}/{event_uuid}.json")
+        ret = requests.get(f"{self._base_url}/{event_uuid}.json", timeout=self.DEFAULT_TIMEOUT)
         return ret.json()
 
     def __init__(self, base_url: str):

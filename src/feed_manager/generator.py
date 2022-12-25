@@ -86,9 +86,7 @@ class AbstractFeedGenerator(abc.ABC):
     def attribute_equals(attr1: pymisp.MISPAttribute, attr2: pymisp.MISPAttribute) -> bool:
         """Return whether two attributes are the same."""
         return (
-            attr1.type == attr2.type and
-            attr1.value == attr2.value and
-            attr1.data == attr2.data
+            attr1.type == attr2.type and attr1.value == attr2.value and attr1.data == attr2.data
         )
 
     @staticmethod
@@ -126,7 +124,9 @@ class AbstractFeedGenerator(abc.ABC):
         return any(cls.attribute_equals(fake_attribute, attr) for attr in misp_event.attributes)
 
     @classmethod
-    def contains_object(cls, misp_event: pymisp.MISPEvent, misp_object: pymisp.MISPObject) -> bool:
+    def contains_object(
+        cls, misp_event: pymisp.MISPEvent, misp_object: pymisp.MISPObject
+    ) -> bool:
         """Return whether the misp event contains a specific object."""
         return any(cls.object_equals(obj, misp_object) for obj in misp_event.objects)
 
@@ -289,7 +289,8 @@ class PeriodicFeedGenerator(AbstractFeedGenerator, abc.ABC):
         if self._current_event_bucket != event_bucket:
             self._logger.debug(
                 "New event bucket required (new=%s, old=%s)",
-                event_bucket, self._current_event_bucket,
+                event_bucket,
+                self._current_event_bucket,
             )
             # flush previous event
             self.flush_event()
@@ -305,11 +306,13 @@ class PeriodicFeedGenerator(AbstractFeedGenerator, abc.ABC):
         """Get the metadata related to the latest event."""
         dated_events = []
         for event_uuid, event_json in self._manifest.items():
-            dated_events.append((
-                event_json["date"],
-                event_uuid,
-                event_json["info"],
-            ))
+            dated_events.append(
+                (
+                    event_json["date"],
+                    event_uuid,
+                    event_json["info"],
+                )
+            )
         # Sort by date then by event name
         dated_events.sort(key=lambda k: (k[0], k[2], k[1]), reverse=True)
         return dated_events[0][1], dated_events[0][0]
@@ -328,15 +331,17 @@ class PeriodicFeedGenerator(AbstractFeedGenerator, abc.ABC):
     def _create_event(self, event_bucket: str) -> pymisp.MISPEvent:
         """Create an even in the given bucket."""
         event = pymisp.MISPEvent()
-        event.from_dict(**{
-            "id": str(len(self._manifest) + 1),
-            "info": f"{self._feed_properties.title} ({event_bucket})",
-            "date": event_bucket,
-            "analysis": self._feed_properties.analysis.value,
-            "threat_level_id": self._feed_properties.threat_level_id.value,
-            "published": self._feed_properties.published,
-            "timestamp": int(self.parse_bucket(event_bucket).timestamp()),
-        })
+        event.from_dict(
+            **{
+                "id": str(len(self._manifest) + 1),
+                "info": f"{self._feed_properties.title} ({event_bucket})",
+                "date": event_bucket,
+                "analysis": self._feed_properties.analysis.value,
+                "threat_level_id": self._feed_properties.threat_level_id.value,
+                "published": self._feed_properties.published,
+                "timestamp": int(self.parse_bucket(event_bucket).timestamp()),
+            }
+        )
         for tag in self._feed_properties.tags:
             event.add_tag(tag)
         event.Orgc = self._feed_properties.organization
