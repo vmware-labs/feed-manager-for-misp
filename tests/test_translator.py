@@ -11,11 +11,11 @@ class TestModule(unittest.TestCase):
 
     @ddt.data(
         ("test=value", None, "value"),
-        ("misp-galaxy:malpedia=\"test\"", None, "test"),
-        ("misp-galaxy:malpedia=\"test\"", "misp-galaxy:malpedia", "test"),
-        ("misp-galaxy:malpedia=\"test\"", "misp-galaxy:another", None),
-        ("misp-galaxy:malpedia2=\"test2\"", None, "test2"),
-        (translator.TagUtils.create_tag("misp-galaxy:malpedia=\"test\""), None, "test"),
+        ('misp-galaxy:malpedia="test"', None, "test"),
+        ('misp-galaxy:malpedia="test"', "misp-galaxy:malpedia", "test"),
+        ('misp-galaxy:malpedia="test"', "misp-galaxy:another", None),
+        ('misp-galaxy:malpedia2="test2"', None, "test2"),
+        (translator.TagUtils.create_tag('misp-galaxy:malpedia="test"'), None, "test"),
     )
     def test_get_cluster_tag_value(self, args):
         """Test 'get_cluster_tag_value'."""
@@ -24,11 +24,13 @@ class TestModule(unittest.TestCase):
         self.assertEqual(output, expected_output)
 
     @ddt.data(
-        ("malpedia2=\"test2\"", ("malpedia2", "test2")),
-        ("misp-galaxy:malpedia=\"test\"", ("misp-galaxy:malpedia", "test")),
-        ("misp-galaxy:malpedia2=\"test2\"", ("misp-galaxy:malpedia2", "test2")),
-        (translator.TagUtils.create_tag("misp-galaxy:malpedia=\"test\""),
-         ("misp-galaxy:malpedia", "test")),
+        ('malpedia2="test2"', ("malpedia2", "test2")),
+        ('misp-galaxy:malpedia="test"', ("misp-galaxy:malpedia", "test")),
+        ('misp-galaxy:malpedia2="test2"', ("misp-galaxy:malpedia2", "test2")),
+        (
+            translator.TagUtils.create_tag('misp-galaxy:malpedia="test"'),
+            ("misp-galaxy:malpedia", "test"),
+        ),
     )
     def test_get_cluster_category_and_value(self, args):
         """Test 'get_cluster_category_and_value'."""
@@ -37,10 +39,10 @@ class TestModule(unittest.TestCase):
         self.assertEqual(output, expected_output)
 
     @ddt.data(
-        ("malpedia2=\"test2\"", (None, None)),
-        ("misp-galaxy:malpedia=\"test\"", ("malpedia", "test")),
-        ("misp-galaxy:malpedia2=\"test2\"", ("malpedia2", "test2")),
-        (translator.TagUtils.create_tag("misp-galaxy:malpedia=\"test\""), ("malpedia", "test")),
+        ('malpedia2="test2"', (None, None)),
+        ('misp-galaxy:malpedia="test"', ("malpedia", "test")),
+        ('misp-galaxy:malpedia2="test2"', ("malpedia2", "test2")),
+        (translator.TagUtils.create_tag('misp-galaxy:malpedia="test"'), ("malpedia", "test")),
     )
     def test_get_cluster_galaxy_and_value(self, args):
         """Test 'get_cluster_galaxy_and_value'."""

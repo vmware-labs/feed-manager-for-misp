@@ -12,9 +12,9 @@ envlist = py39
 isolated_build = True
 
 [testenv]
-extras = misp
 commands = nose2
-deps=
+extras = misp
+deps =
     ddt
     nose2
 """
@@ -35,6 +35,9 @@ exclude = """
   | \\.mypy_cache
   | \\.tox
   | \\.venv
+  | venv
+  | __pycache__
+  | misp_feed_manager.egg-info
   | _build
   | buck-out
   | build

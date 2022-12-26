@@ -88,18 +88,15 @@ class TagUtils:
         return tag
 
     @classmethod
-    def add_tag_to_object(cls, obj: pymisp.MISPObject, tag: Union[str, pymisp.MISPTag]):
-        """Add a tag to an object by choosing a representative attribute."""
-        attribute = cls.get_taggable_entity(obj)
-        cls.add_tag_to_attribute(attribute, tag)
-
-    @classmethod
-    def add_tag_to_attribute(
-        cls, attribute: pymisp.MISPAttribute, tag: Union[str, pymisp.MISPTag]
+    def add_tag(
+        cls,
+        entity: Union[pymisp.MISPAttribute, pymisp.MISPObject, pymisp.MISPEvent],
+        tag: Union[str, pymisp.MISPTag],
     ):
-        """Add a tag to an attribute."""
+        """Add a tag to a MISP entity, either an event, an object, or an attribute."""
         tag = cls.validate_tag(tag)
-        attribute.add_tag(tag)
+        taggable_entity = cls.get_taggable_entity(entity)
+        taggable_entity.add_tag(tag)
 
     @classmethod
     def entity_contains_tag(
@@ -295,7 +292,7 @@ class IndicatorTranslator:
             value=network_indicator,
         )
         for tag in tags or []:
-            TagUtils.add_tag_to_attribute(net_attribute, tag)
+            TagUtils.add_tag(net_attribute, tag)
         return net_attribute
 
     @classmethod
@@ -316,7 +313,7 @@ class IndicatorTranslator:
             value=file_hash,
         )
         for tag in tags or []:
-            TagUtils.add_tag_to_attribute(file_attribute, tag)
+            TagUtils.add_tag(file_attribute, tag)
         return file_attribute
 
     @classmethod
@@ -374,5 +371,5 @@ class IndicatorTranslator:
                 to_ids=False,
             )
         for tag in tags or []:
-            TagUtils.add_tag_to_object(file_object, tag)
+            TagUtils.add_tag(file_object, tag)
         return file_object

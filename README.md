@@ -113,6 +113,41 @@ This package is available on PyPI, and it can be installed with `pip`:
 pip install misp-feed-manager
 ```
 
+To install and use the component requiring `pymisp` you just need to install
+the package together with its `misp` extra (use quotes or double quotes if your
+shell process square brackets):
+```bash
+pip install misp-feed-manager[misp]
+```
+
+## Development
+
+We use `tox` to run tests (via `nose2`), `black` as formatter, and `pylint` as 
+static checker. You can install them (use a virtual environment) using `pip`:
+```bash
+python3 -m venv venv
+source ./venv/bin/activate
+pip install tox black pylint
+```
+And run them as follows:
+```bash
+tox
+>  py39: OK (4.13=setup[3.98]+cmd[0.16] seconds)
+>  congratulations :) (4.17 seconds)
+```
+```bash
+pylint ./bin ./src ./tests
+> 
+> --------------------------------------------------------------------
+> Your code has been rated at 10.00/10 (previous run: 10.00/10, +0.00)
+> 
+```
+```bash
+black ./bin ./src ./tests
+> All done! ✨ 🍰 ✨
+> 7 files left unchanged.
+```
+
 ## Contributing
 
 The feed-manager-for-misp project team welcomes contributions from the community. Before you start working with feed-manager-for-misp, please
