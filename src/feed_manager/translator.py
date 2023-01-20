@@ -362,12 +362,14 @@ class IndicatorTranslator:
             file_object.add_attribute(
                 "size-in-bytes",
                 value=size,
+                category=attribute_category,
                 to_ids=False,
             )
         if mime_type:
             file_object.add_attribute(
                 "mimetype",
                 value=mime_type,
+                category=attribute_category,
                 to_ids=False,
             )
         for tag in tags or []:
