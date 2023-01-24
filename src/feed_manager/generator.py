@@ -1,17 +1,14 @@
 # Copyright 2022 VMware, Inc.
 # SPDX-License-Identifier: BSD-2
 import abc
+import collections
 import datetime
-import hashlib
-import json
 import logging
-import os
 
-from typing import Dict
 from typing import List
 from typing import Optional
-from typing import Tuple
 from typing import Union
+from typing import Dict
 
 import feed_manager
 from feed_manager import translator
@@ -21,6 +18,23 @@ try:
 except ImportError as ie:
     pymisp = None
     feed_manager.print_dependency_error_and_raise(ie)
+
+
+class FeedGenerationException(Exception):
+    """Generic exception."""
+
+
+class FeedEventNotFound(FeedGenerationException):
+    """Exception raised when the feed has not the required event."""
+
+
+FeedEventMetadata = collections.namedtuple(
+    "FeedEventMetadata",
+    [
+        "event_uuid",
+        "event_bucket",
+    ],
+)
 
 
 class FeedProperties:
@@ -64,23 +78,40 @@ class FeedProperties:
         self.title = title
 
 
-class FeedGenerationException(Exception):
-    """Generic exception."""
+class FeedUtils:
+    """Feed utilities."""
 
-
-class FeedEventNotFound(FeedGenerationException):
-    """Exception raised when the feed has not the required event."""
-
-
-class AbstractFeedGenerator(abc.ABC):
-    """Abstract class for every feed generators."""
-
-    def __init__(self, output_dir):
-        """Constructor."""
-        self._logger = logging.getLogger(__name__)
-        self._output_dir = output_dir
-        self._attribute_hashes = []
-        self._manifest = {}
+    @classmethod
+    def get_event_metadata(
+        cls,
+        manifest: Dict,
+        event_bucket: Optional[str] = None,
+    ) -> FeedEventMetadata:
+        """Get the metadata related to the event."""
+        if event_bucket:
+            for event_uuid, event_json in manifest.items():
+                if event_json["date"] == event_bucket:
+                    return FeedEventMetadata(
+                        event_uuid=event_uuid,
+                        event_bucket=event_json["date"],
+                    )
+            raise FeedEventNotFound
+        else:
+            dated_events = []
+            for event_uuid, event_json in manifest.items():
+                dated_events.append(
+                    (
+                        event_json["date"],
+                        event_uuid,
+                        event_json["info"],
+                    )
+                )
+            # Sort by date then by event name
+            dated_events.sort(key=lambda k: (k[0], k[2], k[1]), reverse=True)
+            return FeedEventMetadata(
+                event_uuid=dated_events[0][1],
+                event_bucket=dated_events[0][0],
+            )
 
     @staticmethod
     def attribute_equals(attr1: pymisp.MISPAttribute, attr2: pymisp.MISPAttribute) -> bool:
@@ -132,59 +163,53 @@ class AbstractFeedGenerator(abc.ABC):
 
     @classmethod
     def contains_tag(cls, misp_event: pymisp.MISPEvent, misp_tag: pymisp.MISPTag) -> bool:
+        """Return whether the misp event contains a specific tag."""
         return any(cls.tag_equals(tag, misp_tag) for tag in misp_event.tags)
 
-    @abc.abstractmethod
-    def add_object_to_event(self, misp_object: pymisp.MISPObject) -> bool:
-        """Add object to the current event."""
+
+class AbstractFeedGenerator(abc.ABC):
+    """Abstract class for every feed generators."""
+
+    def __init__(self, storage_layer):
+        """Constructor."""
+        self._logger = logging.getLogger(__name__)
+        self._storage_layer = storage_layer
+        self._manifest = {}
+        self._hashes = []
 
     @abc.abstractmethod
-    def add_tag_to_event(self, misp_tag: pymisp.MISPTag) -> bool:
-        """Add tag to the current event."""
+    def add_object(self, misp_object: pymisp.MISPObject) -> bool:
+        """Add object to the feed."""
 
     @abc.abstractmethod
-    def add_attribute_to_event(self, attr_type: str, attr_value: str, **attr_data) -> bool:
-        """Add an attribute to the current event."""
+    def add_tag(self, misp_tag: pymisp.MISPTag) -> bool:
+        """Add tag to the feed."""
 
     @abc.abstractmethod
-    def flush_event(self, event: Optional[pymisp.MISPEvent] = None) -> None:
-        """Flush the current event (if not specified)."""
+    def add_attribute(self, attr_type: str, attr_value: str, **attr_data) -> bool:
+        """Add an attribute to the feed."""
 
-    def _load_event(self, event_uuid: str) -> pymisp.MISPEvent:
-        """Load an event give its uuid."""
-        with open(os.path.join(self._output_dir, f"{event_uuid}.json"), "r") as f:
-            event_dict = json.load(f)["Event"]
-            event = pymisp.MISPEvent()
-            event.from_dict(**event_dict)
-            return event
+    @abc.abstractmethod
+    def flush(self) -> None:
+        """Flush the feed."""
 
-    def _save_manifest(self) -> None:
-        """Save the manifest to disk."""
-        with open(os.path.join(self._output_dir, "manifest.json"), "w") as manifest_file:
-            json.dump(self._manifest, manifest_file, indent=True)
-        self._logger.debug("Manifest saved")
-
-    def _load_manifest(self) -> Dict[str, Dict]:
-        """Load the manifest."""
-        manifest_path = os.path.join(self._output_dir, "manifest.json")
-        with open(manifest_path, "r") as f:
-            manifest = json.load(f)
-        return manifest
+    def _flush_event(
+        self, event: pymisp.MISPEvent, update_manifest: Optional[bool] = True
+    ) -> None:
+        """Flush the event."""
+        if update_manifest:
+            self._manifest.update(event.manifest)
+            self._storage_layer.save_manifest(self._manifest)
+        self._storage_layer.save_event(event.uuid, event.to_feed())
+        self._storage_layer.append_hashes(self._hashes)
+        self._hashes.clear()
 
     def _add_hash(self, event: pymisp.MISPEvent, attr_type: str, attr_value: str) -> None:
         """Take the attribute properties and add a hash."""
-        _ = attr_type
-        for frag in str(attr_value).split("|"):
-            frag_hash = hashlib.md5(str(frag).encode("utf-8"), usedforsecurity=False).hexdigest()
-            self._attribute_hashes.append([frag_hash, event.get("uuid")])
-
-    def _save_hashes(self) -> None:
-        """Save the collected hashes to disk."""
-        with open(os.path.join(self._output_dir, "hashes.csv"), "a") as hash_file:
-            for element in self._attribute_hashes:
-                hash_file.write(f"{element[0]},{element[1]}\n")
-        self._logger.debug("Hashes saved")
-        self._attribute_hashes.clear()
+        fake_attribute = pymisp.MISPAttribute()
+        fake_attribute.from_dict(type=attr_type, value=attr_value)
+        for hash_value in fake_attribute.hash_values("md5"):
+            self._hashes.append([hash_value, event.get("uuid")])
 
 
 class PeriodicFeedGenerator(AbstractFeedGenerator, abc.ABC):
@@ -200,18 +225,14 @@ class PeriodicFeedGenerator(AbstractFeedGenerator, abc.ABC):
     def parse_bucket(cls, date_str: str) -> datetime.datetime:
         """Given a bucket return the date time object."""
 
-    def get_current_bucket(self) -> str:
-        """Get the current bucket (truncated datetime object)."""
-        return self.get_bucket(self._event_date_callback())
-
     def __init__(
         self,
-        output_dir: str,
+        storage_layer,
         feed_properties: Optional[FeedProperties] = None,
         date_override: Optional[datetime.datetime] = None,
     ):
         """Constructor."""
-        super(PeriodicFeedGenerator, self).__init__(output_dir)
+        super(PeriodicFeedGenerator, self).__init__(storage_layer)
         self._feed_properties = feed_properties or FeedProperties()
         # Set up the callback used to know the current date at which we are inserting items
         if date_override:
@@ -220,116 +241,64 @@ class PeriodicFeedGenerator(AbstractFeedGenerator, abc.ABC):
             self._event_date_callback = lambda: datetime.datetime.utcnow()
 
         # Load the manifest but create it in case it is empty
+        self._logger.info("Loading feed manifest")
         try:
-            self._manifest = self._load_manifest()
+            self._manifest = self._storage_layer.load_manifest()
         except FileNotFoundError:
-            self._logger.debug("Manifest not found, generating a new one")
-            self._manifest = {}
-            new_event = self._create_event(self.get_current_bucket())
-            # flush new event for the first time and manifest
-            self.flush_event(event=new_event)
-            self._manifest.update(new_event.manifest)
-            self._save_manifest()
+            self._logger.info("No manifest found; creating new manifest and first event")
+            self._flush_event(self._create_event(self._get_current_bucket()))
 
         # Load the current event but load it if the existing manifest does not have it
         if date_override:
-            self._logger.debug("Creating a feed with an overriden date: %s", date_override)
-            try:
-                event_uuid, event_date_str = self._get_event_metadata(date_override)
-            except FeedEventNotFound:
-                self._logger.debug("The overridden date does not have an event. Creating it...")
-                new_event = self._create_event(self.get_current_bucket())
-                self.flush_event(event=new_event)
-                self._manifest.update(new_event.manifest)
-                self._save_manifest()
-                event_uuid, event_date_str = self._get_event_metadata(date_override)
-        else:
-            event_uuid, event_date_str = self._get_last_event_metadata()
-        self._current_event_bucket = self.get_bucket(self.parse_bucket(event_date_str))
-        self._current_event = self._load_event(event_uuid)
-
-    def add_object_to_event(self, misp_object: pymisp.MISPObject) -> bool:
-        """Implement interface."""
-        self._update_event_bucket()
-        if self.contains_object(self._current_event, misp_object):
-            return False
-        self._current_event.add_object(misp_object)
-        for attribute in misp_object.attributes:
-            self._add_hash(self._current_event, attribute.type, attribute.value)
-        return True
-
-    def add_attribute_to_event(self, attr_type: str, attr_value: str, **attr_data) -> bool:
-        """Implement interface."""
-        self._update_event_bucket()
-        if self.contains_attribute(self._current_event, attr_type, attr_value, **attr_data):
-            return False
-        self._current_event.add_attribute(attr_type, attr_value, **attr_data)
-        self._add_hash(self._current_event, attr_type, attr_value)
-        return True
-
-    def add_tag_to_event(self, misp_tag: pymisp.MISPTag) -> bool:
-        """Implement interface."""
-        self._update_event_bucket()
-        if self.contains_tag(self._current_event, misp_tag):
-            return False
-        self._current_event.add_tag(misp_tag)
-        return True
-
-    def flush_event(self, event: Optional[pymisp.MISPEvent] = None) -> None:
-        """Implement interface."""
-        if not event:
-            event = self._current_event
-        with open(os.path.join(self._output_dir, event.get("uuid") + ".json"), "w") as event_file:
-            json.dump(event.to_feed(), event_file, indent=True)
-        self._save_hashes()
-
-    def _update_event_bucket(self) -> None:
-        """Update the current bucket if needed."""
-        event_bucket = self.get_current_bucket()
-        if self._current_event_bucket != event_bucket:
-            self._logger.debug(
-                "New event bucket required (new=%s, old=%s)",
+            event_bucket = self.get_bucket(date_override)
+            self._logger.info(
+                "Loading feed event with an overriden date/bucket: %s/%s",
+                date_override,
                 event_bucket,
-                self._current_event_bucket,
             )
-            # flush previous event
-            self.flush_event()
-            # create new event
+            try:
+                event_metadata = FeedUtils.get_event_metadata(
+                    manifest=self._manifest,
+                    event_bucket=event_bucket,
+                )
+            except FeedEventNotFound:
+                self._logger.info(
+                    "No feed event found; creating new event at the request date/bucket: %s/%s",
+                    date_override,
+                    event_bucket,
+                )
+                self._flush_event(self._create_event(event_bucket))
+                event_metadata = FeedUtils.get_event_metadata(
+                    manifest=self._manifest,
+                    event_bucket=event_bucket,
+                )
+        else:
+            self._logger.info("Loading feed event with the latest date/bucket")
+            event_metadata = FeedUtils.get_event_metadata(self._manifest)
+        self._current_event_bucket = event_metadata.event_bucket
+        self._current_event = self._load_event(event_metadata.event_uuid)
+
+    def _get_current_bucket(self) -> str:
+        """Get the current bucket (truncated datetime object)."""
+        return self.get_bucket(self._event_date_callback())
+
+    def _update_event(self) -> None:
+        """Update the current bucket if needed."""
+        event_bucket = self._get_current_bucket()
+        if self._current_event_bucket != event_bucket:
+            self._logger.info(
+                "New event bucket required (current=%s, requested=%s)",
+                self._current_event_bucket,
+                event_bucket,
+            )
+            # flush previous event without updating manifest
+            self._flush_event(self._current_event, update_manifest=False)
             self._current_event_bucket = event_bucket
             self._current_event = self._create_event(event_bucket)
-            # flush new event for the first time and manifest
-            self.flush_event()
-            self._manifest.update(self._current_event.manifest)
-            self._save_manifest()
-
-    def _get_last_event_metadata(self) -> Tuple[str, str]:
-        """Get the metadata related to the latest event."""
-        dated_events = []
-        for event_uuid, event_json in self._manifest.items():
-            dated_events.append(
-                (
-                    event_json["date"],
-                    event_uuid,
-                    event_json["info"],
-                )
-            )
-        # Sort by date then by event name
-        dated_events.sort(key=lambda k: (k[0], k[2], k[1]), reverse=True)
-        return dated_events[0][1], dated_events[0][0]
-
-    def _get_event_metadata(
-        self,
-        date_obj: datetime.datetime,
-    ) -> Tuple[Optional[str], Optional[str]]:
-        """Get the metadata related to the event matching the date provided."""
-        date_str = self.get_bucket(date_obj)
-        for event_uuid, event_json in self._manifest.items():
-            if event_json["date"] == date_str:
-                return event_uuid, event_json["date"]
-        raise FeedEventNotFound
+            self._flush_event(self._current_event)
 
     def _create_event(self, event_bucket: str) -> pymisp.MISPEvent:
-        """Create an even in the given bucket."""
+        """Create an event in the given bucket."""
         event = pymisp.MISPEvent()
         event.from_dict(
             **{
@@ -347,16 +316,53 @@ class PeriodicFeedGenerator(AbstractFeedGenerator, abc.ABC):
         event.Orgc = self._feed_properties.organization
         return event
 
+    def _load_event(self, event_uuid: str) -> pymisp.MISPEvent:
+        """Load the event."""
+        data = self._storage_layer.load_event(event_uuid)
+        event = pymisp.MISPEvent()
+        event.from_dict(**data["Event"])
+        return event
+
+    ##
+    # PUBLIC METHODS
+    ##
+
+    def add_object(self, misp_object: pymisp.MISPObject) -> bool:
+        """Implement interface."""
+        self._update_event()
+        if FeedUtils.contains_object(self._current_event, misp_object):
+            return False
+        self._current_event.add_object(misp_object)
+        for attribute in misp_object.attributes:
+            self._add_hash(self._current_event, attribute.type, attribute.value)
+        return True
+
+    def add_attribute(self, attr_type: str, attr_value: str, **attr_data) -> bool:
+        """Implement interface."""
+        self._update_event()
+        if FeedUtils.contains_attribute(self._current_event, attr_type, attr_value, **attr_data):
+            return False
+        self._current_event.add_attribute(attr_type, attr_value, **attr_data)
+        self._add_hash(self._current_event, attr_type, attr_value)
+        return True
+
+    def add_tag(self, misp_tag: pymisp.MISPTag) -> bool:
+        """Implement interface."""
+        self._update_event()
+        if FeedUtils.contains_tag(self._current_event, misp_tag):
+            return False
+        self._current_event.add_tag(misp_tag)
+        return True
+
+    def flush(self) -> None:
+        """Implement interface."""
+        self._flush_event(self._current_event)
+
 
 class DailyFeedGenerator(PeriodicFeedGenerator):
     """A feed generator that creates a different event every day."""
 
     BUCKET_FMT = "%Y-%m-%d"
-
-    @classmethod
-    def parse_bucket(cls, date_str: str) -> datetime.datetime:
-        """Implement interface"""
-        return datetime.datetime.strptime(date_str, cls.BUCKET_FMT)
 
     @classmethod
     def get_bucket(cls, date_obj: datetime.datetime) -> str:
@@ -367,3 +373,8 @@ class DailyFeedGenerator(PeriodicFeedGenerator):
             second=0,
             microsecond=0,
         ).strftime(cls.BUCKET_FMT)
+
+    @classmethod
+    def parse_bucket(cls, date_str: str) -> datetime.datetime:
+        """Implement interface"""
+        return datetime.datetime.strptime(date_str, cls.BUCKET_FMT)

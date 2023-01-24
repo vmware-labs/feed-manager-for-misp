@@ -3,10 +3,7 @@
 import abc
 import collections
 import datetime
-import json
 import logging
-import os
-import requests
 
 from types import TracebackType
 from typing import Any
@@ -238,16 +235,13 @@ class TelemetryEventFeedParser(FeedParser):
                     yield from self._process_object(uuid)
 
 
-class AbstractFeedConsumer(abc.ABC):
+class FeedConsumer:
     """Abstract implementation of a consumer."""
 
-    @abc.abstractmethod
-    def load_manifest(self) -> Dict:
-        """Return the manifest as a dictionary."""
-
-    @abc.abstractmethod
-    def load_event(self, event_uuid) -> Dict:
-        """Load the event as a dictionary."""
+    def __init__(self, storage_layer):
+        """Constructor."""
+        self._logger = logging.getLogger(__name__)
+        self._storage_layer = storage_layer
 
     @classmethod
     def _infer_parser_class(cls, event_data: Dict) -> Type[BaseFeedParserSubType]:
@@ -264,7 +258,7 @@ class AbstractFeedConsumer(abc.ABC):
     def _get_event_uuids_since(self, since_timestamp: float = None) -> List[str]:
         """Read the manifest and return the event uuids matching the filter."""
         event_uuids = []
-        for event_uuid, event_data in self.load_manifest().items():
+        for event_uuid, event_data in self._storage_layer.load_manifest().items():
             if not since_timestamp or event_data["timestamp"] > since_timestamp:
                 event_uuids.append(event_uuid)
         return event_uuids
@@ -272,7 +266,7 @@ class AbstractFeedConsumer(abc.ABC):
     def _get_events_since(self, date_object: datetime.datetime) -> List[Dict]:
         """Return list of event data objects."""
         event_uuids = self._get_event_uuids_since(date_object.timestamp())
-        return [self.load_event(x) for x in event_uuids]
+        return [self._storage_layer.load_event(x) for x in event_uuids]
 
     @classmethod
     def _get_tag_galaxy(cls, tag_name: str) -> Optional[str]:
@@ -316,47 +310,3 @@ class AbstractFeedConsumer(abc.ABC):
             except EmptyFeedException:
                 self._logger.warning("The feed '%s' is empty", event_data["Event"]["info"])
         return ret
-
-    def __init__(self):
-        """Constructor."""
-        self._logger = logging.getLogger(__name__)
-
-
-class LocalFeedConsumer(AbstractFeedConsumer):
-    """Consumer using a local directory."""
-
-    def load_manifest(self) -> Dict:
-        """Implement interface."""
-        with open(os.path.join(self._input_dir, "manifest.json"), "r") as f:
-            return json.load(f)
-
-    def load_event(self, event_uuid: str) -> Dict:
-        """Implement interface."""
-        with open(os.path.join(self._input_dir, f"{event_uuid}.json"), "r") as f:
-            return json.load(f)
-
-    def __init__(self, input_dir: str):
-        """Constructor."""
-        super(LocalFeedConsumer, self).__init__()
-        self._input_dir = input_dir
-
-
-class RemoteFeedConsumer(AbstractFeedConsumer):
-    """Consumer using a remote (HTTP) source."""
-
-    DEFAULT_TIMEOUT = 60
-
-    def load_manifest(self) -> Dict:
-        """Implement interface."""
-        ret = requests.get(f"{self._base_url}/manifest.json", timeout=self.DEFAULT_TIMEOUT)
-        return ret.json()
-
-    def load_event(self, event_uuid: str) -> Dict:
-        """Implement interface."""
-        ret = requests.get(f"{self._base_url}/{event_uuid}.json", timeout=self.DEFAULT_TIMEOUT)
-        return ret.json()
-
-    def __init__(self, base_url: str):
-        """Constructor."""
-        super(RemoteFeedConsumer, self).__init__()
-        self._base_url = base_url.rstrip("/")

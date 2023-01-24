@@ -2,8 +2,6 @@
 # Copyright 2022 VMware, Inc.
 # SPDX-License-Identifier: BSD-2
 import argparse
-import os
-import pathlib
 import sys
 
 from typing import Any
@@ -11,8 +9,9 @@ from typing import Dict
 from typing import List
 
 import feed_manager
-from feed_manager import translator
 from feed_manager import generator
+from feed_manager import translator
+from feed_manager import storage
 
 try:
     import pymisp
@@ -106,17 +105,15 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "-o",
-        "--output-dir",
-        dest="output_dir",
+        "--output-location",
+        dest="output_location",
         type=str,
         default="./tmp/",
-        help="the local feed",
+        help="the output location",
     )
     args = parser.parse_args()
 
     # Test the indicator feed
-    indicators_path = os.path.join(args.output_dir, "indicators")
-    pathlib.Path(indicators_path).mkdir(parents=True, exist_ok=True)
     misp_object = translator.IndicatorTranslator.to_file_object(
         file_md5=INDICATOR_MD5,
         file_sha1=INDICATOR_SHA1,
@@ -124,29 +121,35 @@ def main():
         tags=INDICATOR_TAGS,
     )
     feed_generator = generator.DailyFeedGenerator(
-        output_dir=indicators_path,
+        storage_layer=storage.get_storage_layer(
+            input_string=args.output_location,
+            path="indicators",
+            read_write=True,
+        ),
         feed_properties=generator.FeedProperties(
             title="Test indicators feed",
         ),
     )
-    feed_generator.add_object_to_event(misp_object)
-    feed_generator.flush_event()
-    print(f"Daily feed of indicators written to: {indicators_path}")
+    feed_generator.add_object(misp_object)
+    feed_generator.flush()
+    print("Daily feed of indicators flushed")
 
     # Test the telemetry feed
-    telemetry_path = os.path.join(args.output_dir, "telemetry")
-    pathlib.Path(telemetry_path).mkdir(parents=True, exist_ok=True)
     misp_objects = from_telemetry_item_to_objects(TELEMETRY_ITEM)
     feed_generator = generator.DailyFeedGenerator(
-        output_dir=telemetry_path,
+        storage_layer=storage.get_storage_layer(
+            input_string=args.output_location,
+            path="telemetry",
+            read_write=True,
+        ),
         feed_properties=generator.FeedProperties(
             title="Test telemetry feed",
         ),
     )
     for misp_object in misp_objects:
-        feed_generator.add_object_to_event(misp_object)
-    feed_generator.flush_event()
-    print(f"Daily feed of telemetry objects written to: {telemetry_path}")
+        feed_generator.add_object(misp_object)
+    feed_generator.flush()
+    print("Daily feed of telemetry objects flushed")
 
     return 0
 

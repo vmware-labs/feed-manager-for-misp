@@ -7,6 +7,7 @@ import datetime
 import json
 import sys
 
+from feed_manager import storage
 from feed_manager import consumer
 
 from typing import Dict
@@ -67,6 +68,14 @@ def main():
         help="location of the feed",
     )
     parser.add_argument(
+        "-p",
+        "--path",
+        dest="path",
+        type=str,
+        default=None,
+        help="optional additional path",
+    )
+    parser.add_argument(
         "-t",
         "--attribute-type",
         dest="attribute_type",
@@ -92,12 +101,14 @@ def main():
     )
     args = parser.parse_args()
 
+    feed_consumer = consumer.FeedConsumer(
+        storage.get_storage_layer(
+            input_string=args.input_location,
+            path=args.path,
+            read_write=False,
+        )
+    )
     since_date_object = datetime.datetime.utcnow() - datetime.timedelta(days=args.day_delta)
-    if args.input_location.startswith("http"):
-        consumer_class = consumer.RemoteFeedConsumer
-    else:
-        consumer_class = consumer.LocalFeedConsumer
-    feed_consumer = consumer_class(args.input_location)
     indicators = feed_consumer.get_items_since(
         date_object=since_date_object,
         attribute_type=args.attribute_type,
