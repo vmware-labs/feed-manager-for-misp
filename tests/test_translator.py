@@ -6,8 +6,8 @@ from feed_manager import translator
 
 
 @ddt.ddt
-class TestModule(unittest.TestCase):
-    """Class to test the module."""
+class TestTranslator(unittest.TestCase):
+    """Class to test the translator module."""
 
     @ddt.data(
         ("test=value", None, "value"),

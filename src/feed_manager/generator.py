@@ -5,10 +5,10 @@ import collections
 import datetime
 import logging
 
+from typing import Dict
 from typing import List
 from typing import Optional
 from typing import Union
-from typing import Dict
 
 import feed_manager
 from feed_manager import translator
@@ -225,6 +225,13 @@ class PeriodicFeedGenerator(AbstractFeedGenerator, abc.ABC):
     def parse_bucket(cls, date_str: str) -> datetime.datetime:
         """Given a bucket return the date time object."""
 
+    def set_clock(self, utc_now: Optional[datetime.datetime]) -> None:
+        """Initialize the feed clock to the provided value or utcnow() otherwise."""
+        if utc_now:
+            self._event_date_callback = lambda: utc_now
+        else:
+            self._event_date_callback = lambda: datetime.datetime.utcnow()
+
     def __init__(
         self,
         storage_layer,
@@ -234,11 +241,10 @@ class PeriodicFeedGenerator(AbstractFeedGenerator, abc.ABC):
         """Constructor."""
         super(PeriodicFeedGenerator, self).__init__(storage_layer)
         self._feed_properties = feed_properties or FeedProperties()
+        # Let 'set_clock' initialize '_event_date_callback'
+        self._event_date_callback = None
         # Set up the callback used to know the current date at which we are inserting items
-        if date_override:
-            self._event_date_callback = lambda: date_override
-        else:
-            self._event_date_callback = lambda: datetime.datetime.utcnow()
+        self.set_clock(date_override)
 
         # Load the manifest but create it in case it is empty
         self._logger.info("Loading feed manifest")

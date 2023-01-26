@@ -99,15 +99,22 @@ def main():
         default=7,
         help="the look back in terms of days",
     )
+    parser.add_argument(
+        "-v",
+        "--verbose",
+        dest="verbose",
+        action="store_true",
+        default=False,
+        help="whether to be verbose and print attributes hashes",
+    )
     args = parser.parse_args()
 
-    feed_consumer = consumer.FeedConsumer(
-        storage.get_storage_layer(
-            input_string=args.input_location,
-            path=args.path,
-            read_write=False,
-        )
+    storage_layer = storage.get_storage_layer(
+        input_string=args.input_location,
+        path=args.path,
+        read_write=False,
     )
+    feed_consumer = consumer.FeedConsumer(storage_layer)
     since_date_object = datetime.datetime.utcnow() - datetime.timedelta(days=args.day_delta)
     indicators = feed_consumer.get_items_since(
         date_object=since_date_object,
@@ -118,6 +125,10 @@ def main():
     print(f"Fetching items since {since_date_object}")
     for indicator in indicators:
         print(json.dumps(indicator, indent=True))
+    if args.verbose:
+        print("Fetching all attribute hashes")
+        for item in storage_layer.load_hashes():
+            print(item[0], item[1])
 
     print("Computing statistics")
     try:

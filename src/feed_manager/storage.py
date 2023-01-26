@@ -1,14 +1,17 @@
+import abc
+import csv
 import logging
 import json
-import requests
 import os
-import csv
-import abc
 import pathlib
+import requests
 from google.cloud import storage as google_storage
+
 from typing import Dict
-from typing import Optional
 from typing import List
+from typing import Optional
+from typing import TextIO
+from typing import Union
 
 
 def get_storage_layer(
@@ -60,13 +63,12 @@ class AbstractReader(abc.ABC):
     MANIFEST_FILENAME = "manifest.json"
 
     @classmethod
-    def _parse_csv(cls, csv_data) -> List[List[str]]:
+    def _parse_csv(cls, csv_data: Union[TextIO, List]) -> List[List[str]]:
         """Parse a CSV file."""
         if not csv_data:
             return []
-        if len(csv_data) == 1 and csv_data[0] == "":
-            return []
-        return [[row[0], row[1]] for row in csv.reader(csv_data)]
+        # skip empty lines and skip lines with just whitespace
+        return [[row[0], row[1]] for row in csv.reader(csv_data) if row and row[0].strip()]
 
     def __init__(self, path: Optional[str] = None) -> None:
         self._path = path or ""
@@ -106,6 +108,8 @@ class AbstractWriter(AbstractReader, abc.ABC):
 
     def append_hashes(self, attribute_hashes: List[List[str]]) -> None:
         """Append hashes."""
+        if not attribute_hashes:
+            return
         hashes = self.load_hashes()
         hashes.extend(attribute_hashes)
         self.save_hashes(hashes)
