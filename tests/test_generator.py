@@ -1,6 +1,7 @@
 # Copyright 2022 VMware, Inc.
 # SPDX-License-Identifier: BSD-2
 import datetime
+import pymisp
 import unittest
 from feed_manager import storage
 from feed_manager import generator
@@ -11,6 +12,8 @@ from typing import List
 
 UTC_NOW = datetime.datetime.utcnow()
 UTC_TOMORROW = UTC_NOW + datetime.timedelta(days=1)
+TEST_MD5_1 = "a" * 32
+TEST_MD5_2 = "b" * 32
 
 
 class InMemoryStorageLayer(storage.AbstractWriter):
@@ -68,6 +71,32 @@ class TestGenerator(unittest.TestCase):
         self.assertEqual(len(storage_layer.manifest.keys()), 2)
         self.assertEqual(len(storage_layer.events), 2)
         self.assertEqual(len(storage_layer.hashes), 2)
+
+
+class TestFeedUtils(unittest.TestCase):
+    """Class to test the feed utils class."""
+
+    def test_contains_attribute(self):
+        """Test contain attribute."""
+        misp_event = pymisp.MISPEvent()
+        misp_event.add_attribute(type="md5", value="a" * 32)
+        self.assertTrue(generator.FeedUtils.contains_attribute(misp_event, "md5", "a" * 32))
+        self.assertFalse(generator.FeedUtils.contains_attribute(misp_event, "md5", "b" * 32))
+
+    def test_contains_attribute_with_data(self):
+        """Test contain attribute with data."""
+        misp_event = pymisp.MISPEvent()
+        misp_event.add_attribute(type="md5", value=TEST_MD5_1, data=b"data")
+        self.assertFalse(generator.FeedUtils.contains_attribute(misp_event, "md5", TEST_MD5_1))
+        self.assertFalse(generator.FeedUtils.contains_attribute(misp_event, "md5", TEST_MD5_2))
+        self.assertTrue(
+            generator.FeedUtils.contains_attribute(misp_event, "md5", TEST_MD5_1, data=b"data")
+        )
+        self.assertFalse(
+            generator.FeedUtils.contains_attribute(
+                misp_event, "md5", TEST_MD5_1, data=b"datadata"
+            )
+        )
 
 
 if __name__ == "__main__":

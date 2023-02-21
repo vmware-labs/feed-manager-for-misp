@@ -8,7 +8,7 @@ build-backend = "setuptools.build_meta"
 [tool.tox]
 legacy_tox_ini = """
 [tox]
-envlist = py39
+envlist = py39, py310, py311
 isolated_build = True
 
 [testenv]
@@ -19,8 +19,7 @@ deps =
     nose2
 """
 
-[tool.pylint.master]
-ignored-modules = "config"
+[tool.pylint]
 disable = """
 W1514,F0010,useless-super-delegation,E1103,W0108,W0404,R0904,R0922,W0105,
 W0142,C0301,C0321,C0322,C0324,R,W0232,E1001,W0212,W0703,C,I0011,I0012,I0013,E0012,W0707"""

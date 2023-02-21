@@ -1,6 +1,7 @@
 # Copyright 2022 VMware, Inc.
 # SPDX-License-Identifier: BSD-2
 import abc
+import base64
 import collections
 import datetime
 import logging
@@ -116,9 +117,19 @@ class FeedUtils:
     @staticmethod
     def attribute_equals(attr1: pymisp.MISPAttribute, attr2: pymisp.MISPAttribute) -> bool:
         """Return whether two attributes are the same."""
-        return (
-            attr1.type == attr2.type and attr1.value == attr2.value and attr1.data == attr2.data
-        )
+
+        def _data_equals() -> bool:
+            if attr1.data is None:
+                return attr2.data is None
+            elif attr2.data is None:
+                return attr1.data is None
+            else:
+                return (
+                    base64.b64encode(attr1.data.getvalue()).decode()
+                    == base64.b64encode(attr2.data.getvalue()).decode()
+                )
+
+        return attr1.type == attr2.type and attr1.value == attr2.value and _data_equals()
 
     @staticmethod
     def tag_equals(tag1: pymisp.MISPTag, tag2: pymisp.MISPTag) -> bool:
@@ -150,7 +161,7 @@ class FeedUtils:
         fake_attribute.from_dict(
             type=attr_type,
             value=attr_value,
-            data=attr_data,
+            **attr_data,
         )
         return any(cls.attribute_equals(fake_attribute, attr) for attr in misp_event.attributes)
 
