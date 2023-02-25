@@ -82,38 +82,6 @@ class FeedProperties:
 class FeedUtils:
     """Feed utilities."""
 
-    @classmethod
-    def get_event_metadata(
-        cls,
-        manifest: Dict,
-        event_bucket: Optional[str] = None,
-    ) -> FeedEventMetadata:
-        """Get the metadata related to the event."""
-        if event_bucket:
-            for event_uuid, event_json in manifest.items():
-                if event_json["date"] == event_bucket:
-                    return FeedEventMetadata(
-                        event_uuid=event_uuid,
-                        event_bucket=event_json["date"],
-                    )
-            raise FeedEventNotFound
-        else:
-            dated_events = []
-            for event_uuid, event_json in manifest.items():
-                dated_events.append(
-                    (
-                        event_json["date"],
-                        event_uuid,
-                        event_json["info"],
-                    )
-                )
-            # Sort by date then by event name
-            dated_events.sort(key=lambda k: (k[0], k[2], k[1]), reverse=True)
-            return FeedEventMetadata(
-                event_uuid=dated_events[0][1],
-                event_bucket=dated_events[0][0],
-            )
-
     @staticmethod
     def attribute_equals(attr1: pymisp.MISPAttribute, attr2: pymisp.MISPAttribute) -> bool:
         """Return whether two attributes are the same."""
@@ -236,6 +204,44 @@ class PeriodicFeedGenerator(AbstractFeedGenerator, abc.ABC):
     def parse_bucket(cls, date_str: str) -> datetime.datetime:
         """Given a bucket return the date time object."""
 
+    @classmethod
+    def get_bucket_from_timestamp(cls, timestamp: int) -> str:
+        """Get the bucket given a timestamp."""
+        return cls.get_bucket(datetime.datetime.fromtimestamp(timestamp))
+
+    @classmethod
+    def get_event_metadata(
+        cls,
+        manifest: Dict,
+        event_bucket: Optional[str] = None,
+    ) -> FeedEventMetadata:
+        """Get the metadata related to the event."""
+        if event_bucket:
+            for event_uuid, event_json in manifest.items():
+                parsed_bucket = cls.get_bucket_from_timestamp(event_json["timestamp"])
+                if parsed_bucket == event_bucket:
+                    return FeedEventMetadata(
+                        event_uuid=event_uuid,
+                        event_bucket=parsed_bucket,
+                    )
+            raise FeedEventNotFound
+        else:
+            dated_events = []
+            for event_uuid, event_json in manifest.items():
+                dated_events.append(
+                    (
+                        event_json["timestamp"],
+                        event_uuid,
+                        event_json["info"],
+                    )
+                )
+            # Sort by date then by event name
+            dated_events.sort(key=lambda k: (k[0], k[2], k[1]), reverse=True)
+            return FeedEventMetadata(
+                event_uuid=dated_events[0][1],
+                event_bucket=cls.get_bucket_from_timestamp(dated_events[0][0]),
+            )
+
     def set_clock(self, utc_now: Optional[datetime.datetime]) -> None:
         """Initialize the feed clock to the provided value or utcnow() otherwise."""
         if utc_now:
@@ -274,7 +280,7 @@ class PeriodicFeedGenerator(AbstractFeedGenerator, abc.ABC):
                 event_bucket,
             )
             try:
-                event_metadata = FeedUtils.get_event_metadata(
+                event_metadata = self.get_event_metadata(
                     manifest=self._manifest,
                     event_bucket=event_bucket,
                 )
@@ -285,13 +291,13 @@ class PeriodicFeedGenerator(AbstractFeedGenerator, abc.ABC):
                     event_bucket,
                 )
                 self._flush_event(self._create_event(event_bucket))
-                event_metadata = FeedUtils.get_event_metadata(
+                event_metadata = self.get_event_metadata(
                     manifest=self._manifest,
                     event_bucket=event_bucket,
                 )
         else:
             self._logger.info("Loading feed event with the latest date/bucket")
-            event_metadata = FeedUtils.get_event_metadata(self._manifest)
+            event_metadata = self.get_event_metadata(self._manifest)
         self._current_event_bucket = event_metadata.event_bucket
         self._current_event = self._load_event(event_metadata.event_uuid)
 
