@@ -177,31 +177,107 @@ class TagUtils:
 class SightingUtils:
     """Utility class to deal with sightings and timestamps."""
 
+    DATETIME_FMT = "%Y-%m-%d %H:%M:%S"
+
+    @classmethod
+    def format_sighting(
+        cls,
+        sighting_object: pymisp.MISPSighting,
+        fmt: Optional[str] = None,
+    ) -> str:
+        """Format a sighting into a string."""
+        if not fmt:
+            fmt = cls.DATETIME_FMT
+        return cls.timestamp_to_date(cls.sighting_to_timestamp(sighting_object)).strftime(fmt)
+
+    @classmethod
+    def format_seen_times(
+        cls,
+        misp_object: pymisp.MISPObject,
+        fmt: Optional[str] = None,
+    ) -> str:
+        """Format first and last seen"""
+        if not fmt:
+            fmt = cls.DATETIME_FMT
+        return "first={}/last={}".format(
+            misp_object.first_seen.strftime(fmt), misp_object.last_seen.strftime(fmt)
+        )
+
+    @classmethod
+    def is_datetime_naive(cls, date_object: datetime.datetime) -> bool:
+        """Return whether a datetime object is naive (not TZ info)."""
+        return date_object.tzinfo is None or date_object.tzinfo.utcoffset(date_object) is None
+
     @classmethod
     def timestamp_to_date(cls, timestamp: int) -> datetime.datetime:
         """Convert a timestamp to datetime object."""
         return datetime.datetime.utcfromtimestamp(timestamp).replace(tzinfo=datetime.timezone.utc)
 
     @classmethod
+    def sighting_to_timestamp(cls, sighting_object: pymisp.MISPSighting) -> int:
+        """Get the timestamp of a sighting object."""
+        try:
+            # Initialized Sightings have a 'date_sighting' attribute
+            return int(sighting_object.date_sighting)
+        except AttributeError:
+            # Uninitialized Sightings have a 'timestamp' attribute
+            return int(sighting_object.timestamp)
+
+    @classmethod
+    def get_sightings(
+        cls, entity: Union[pymisp.MISPAttribute, pymisp.MISPObject]
+    ) -> List[pymisp.MISPSighting]:
+        """Get the all the sightings from an entity."""
+        return TagUtils.get_taggable_entity(entity).Sighting
+
+    @classmethod
     def get_sightings_date(
         cls, entity: Union[pymisp.MISPAttribute, pymisp.MISPObject]
     ) -> List[datetime.datetime]:
-        """Get all sightings in datetime objects."""
+        """Get all sightings as datetime objects."""
         return [
-            cls.timestamp_to_date(int(x.date_sighting))
-            for x in TagUtils.get_taggable_entity(entity).sightings
+            cls.timestamp_to_date(cls.sighting_to_timestamp(x)) for x in cls.get_sightings(entity)
         ]
 
     @classmethod
-    def iter_sightings_date(
+    def get_sightings_timestamp(
+        cls, entity: Union[pymisp.MISPAttribute, pymisp.MISPObject]
+    ) -> List[int]:
+        """Get all sightings as timestamps."""
+        return [cls.sighting_to_timestamp(x) for x in cls.get_sightings(entity)]
+
+    @classmethod
+    def date_to_sightings(
+        cls,
+        date_objects: Iterable[datetime.datetime],
+    ) -> List[pymisp.MISPSighting]:
+        """Update sightings."""
+        sighting_objects = []
+        for date_object in date_objects:
+            sighting = pymisp.MISPSighting()
+            sighting.from_dict(**{"timestamp": date_object.timestamp()})
+            sighting_objects.append(sighting)
+        return sighting_objects
+
+    @classmethod
+    def has_sighting(
+        cls,
+        entity: Union[pymisp.MISPAttribute, pymisp.MISPObject],
+        sighting: pymisp.MISPSighting,
+    ) -> bool:
+        """Return whether the object has a sighting with this timestamp."""
+        existing_timestamps = set(cls.get_sightings_timestamp(entity))
+        return cls.sighting_to_timestamp(sighting) in existing_timestamps
+
+    @classmethod
+    def iter_sightings(
         cls,
         event: pymisp.MISPEvent,
-    ) -> Generator[datetime.datetime, None, None]:
+    ) -> Generator[pymisp.MISPSighting, None, None]:
         """Iterate over all sightings."""
         for entity in itertools.chain(event.objects, event.attributes):
             try:
-                taggable_entity = TagUtils.get_taggable_entity(entity)
-                for sighting in cls.get_sightings_date(taggable_entity):
+                for sighting in cls.get_sightings_date(entity):
                     yield sighting
             except ValueError:
                 pass
@@ -213,53 +289,25 @@ class SightingUtils:
         date_objects: Iterable[datetime.datetime],
     ) -> pymisp.MISPObject:
         """Update seen times of an object given a list of date objects."""
-        update_value = False
+        if any(cls.is_datetime_naive(x) for x in date_objects):
+            raise ValueError("Parameter 'date_objects' must contain timezone aware objects only")
         first_seen = min(date_objects)
-        if not hasattr(misp_object, "first_seen"):
-            update_value = True
-        elif not misp_object.first_seen:
-            update_value = True
-        elif first_seen < misp_object.first_seen:
-            update_value = True
-        if update_value:
+        if (
+            not hasattr(misp_object, "first_seen")
+            or not misp_object.first_seen
+            or first_seen < misp_object.first_seen
+        ):
             misp_object.first_seen = first_seen
             misp_object.edited = True
-        update_value = False
         last_seen = max(date_objects)
-        if not hasattr(misp_object, "last_seen"):
-            update_value = True
-        elif not misp_object.last_seen:
-            update_value = True
-        elif last_seen > misp_object.last_seen:
-            update_value = True
-        if update_value:
+        if (
+            not hasattr(misp_object, "last_seen")
+            or not misp_object.last_seen
+            or last_seen > misp_object.last_seen
+        ):
             misp_object.last_seen = last_seen
             misp_object.edited = True
         return misp_object
-
-    @classmethod
-    def update_object_sightings(
-        cls,
-        misp_object: pymisp.MISPObject,
-        existing_sightings: Iterable[datetime.datetime],
-        fetched_sightings: Iterable[datetime.datetime],
-    ) -> Tuple[pymisp.MISPObject, List[pymisp.MISPSighting]]:
-        """Update all the sightings."""
-        # update first/last seen in objects
-        all_sightings = set(fetched_sightings).union(existing_sightings)
-        misp_object = cls.update_object_seen_times(misp_object, all_sightings)
-        # update sightings
-        novel_sightings = set(fetched_sightings).difference(existing_sightings)
-        novel_objects = []
-        for sighting_data in novel_sightings:
-            sighting = pymisp.MISPSighting()
-            sighting.from_dict(
-                **{
-                    "timestamp": sighting_data.timestamp(),
-                }
-            )
-            novel_objects.append(sighting)
-        return misp_object, novel_objects
 
 
 class IndicatorTranslator:
