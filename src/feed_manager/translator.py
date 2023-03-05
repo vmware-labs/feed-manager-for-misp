@@ -46,7 +46,10 @@ class TagUtils:
                 tags.append(tag_object)
         except KeyError:
             pass
+        was_edited = object_attribute.edited
         object_attribute.tags = tags
+        if not was_edited:
+            object_attribute.edited = False
         return object_attribute
 
     @classmethod
