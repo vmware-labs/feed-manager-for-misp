@@ -23,7 +23,7 @@ class ObjectFactory:
 
     def __init__(self, event_data: Dict):
         """Constructor."""
-        self._uuid_to_object = {x["uuid"]: x for x in event_data["Event"]["Object"]}
+        self._uuid_to_object = {x["uuid"]: x for x in event_data["Event"].get("Object", [])}
         self._reference_uuid_to_uuids = collections.defaultdict(set)
         for uuid, obj in self._uuid_to_object.items():
             if "ObjectReference" in obj:
@@ -141,10 +141,11 @@ class FeedParser(abc.ABC):
     def __init__(self, event_data: Dict[str, Any]):
         """Constructor."""
         self._event_data = event_data
-        self._uuid_to_object = {x["uuid"]: x for x in event_data["Event"]["Object"]}
-        self._name_to_uuids = collections.defaultdict(list)
+        self._uuid_to_object = {x["uuid"]: x for x in event_data["Event"].get("Object", [])}
+        self._uuid_to_attribute = {x["uuid"]: x for x in event_data["Event"].get("Attribute", [])}
+        self._object_name_to_uuids = collections.defaultdict(list)
         for uuid, obj in self._uuid_to_object.items():
-            self._name_to_uuids[obj["name"]].append(uuid)
+            self._object_name_to_uuids[obj["name"]].append(uuid)
         self._object_factory = ObjectFactory(event_data)
 
     @classmethod
@@ -160,6 +161,11 @@ class FeedParser(abc.ABC):
         for attribute in object_data["Attribute"]:
             tags.update([x["name"] for x in attribute.get("Tag", [])])
         return sorted(tags)
+
+    @classmethod
+    def _get_tags_from_attribute(cls, attribute_data: Dict[str, Any]) -> List[str]:
+        """Return the tags assigned to an attribute."""
+        return sorted([x["name"] for x in attribute_data.get("Tag", [])])
 
     @classmethod
     def get_tags_from_event(cls, event_data: Dict[str, Any]) -> List[str]:
@@ -186,7 +192,7 @@ class FeedParser(abc.ABC):
 BaseFeedParserSubType = TypeVar("BaseFeedParserSubType", bound=FeedParser)
 
 
-class IndicatorEventFeedParser(FeedParser):
+class IndicatorFeedParser(FeedParser):
     """Parser able to read feeds made of indicators."""
 
     def _process_object(self, uuid: str) -> Generator[Dict[str, Any], None, None]:
@@ -206,14 +212,31 @@ class IndicatorEventFeedParser(FeedParser):
                     "attribute_value": attribute["value"],
                 }
 
+    def _process_attribute(self, uuid: str) -> Generator[Dict[str, Any], None, None]:
+        """Parse an attribute and return the item representation."""
+        attribute = self._uuid_to_attribute[uuid]
+        attribute_tags = self._get_tags_from_attribute(attribute)
+        if attribute["type"] in self.FILE_INDICATOR_TYPES | self.NETWORK_INDICATOR_TYPES:
+            timestamp = self._timestamp_to_date_str(self._event_data["Event"]["timestamp"])
+            yield {
+                "tags": attribute_tags,
+                "timestamp": timestamp,
+                "event_uuid": self._event_data["Event"]["uuid"],
+                "attribute_uuid": attribute["uuid"],
+                "attribute_type": attribute["type"],
+                "attribute_value": attribute["value"],
+            }
+
     def __iter__(self) -> Generator[Dict[str, Any], None, None]:
         """Implement interface."""
         for obj in self._uuid_to_object.values():
             if obj["name"] in frozenset([self.FILE_OBJECT_TYPE, self.NETWORK_OBJECT_TYPE]):
                 yield from self._process_object(obj["uuid"])
+        for attribute in self._uuid_to_attribute.values():
+            yield from self._process_attribute(attribute["uuid"])
 
 
-class TelemetryEventFeedParser(FeedParser):
+class TelemetryFeedParser(FeedParser):
     """Parser able to read feeds made of telemetry items."""
 
     def _process_object(self, uuid: str) -> Generator[Dict[str, Any], None, None]:
@@ -229,7 +252,7 @@ class TelemetryEventFeedParser(FeedParser):
 
     def __iter__(self) -> Generator[Dict[str, Any], None, None]:
         """Implement interface."""
-        for name, uuids in self._name_to_uuids.items():
+        for name, uuids in self._object_name_to_uuids.items():
             if name == self.FILE_OBJECT_TYPE:
                 for uuid in uuids:
                     yield from self._process_object(uuid)
@@ -246,14 +269,14 @@ class FeedConsumer:
     @classmethod
     def _infer_parser_class(cls, event_data: Dict) -> Type[BaseFeedParserSubType]:
         """Return the parser class able to read the feed."""
-        try:
-            objects_data = event_data["Event"]["Object"]
-        except KeyError:
-            raise EmptyFeedException
+        objects_data = event_data["Event"].get("Object", [])
+        attributes_data = event_data["Event"].get("Attribute", [])
         for object_data in objects_data:
             if object_data["name"] in ObjectFactory.TELEMETRY_OBJECT_NAMES:
-                return TelemetryEventFeedParser
-        return IndicatorEventFeedParser
+                return TelemetryFeedParser
+        if objects_data or attributes_data:
+            return IndicatorFeedParser
+        raise EmptyFeedException
 
     def _get_event_uuids_since(self, since_timestamp: float = None) -> List[str]:
         """Read the manifest and return the event uuids matching the filter."""
