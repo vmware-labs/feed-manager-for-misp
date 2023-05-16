@@ -130,6 +130,8 @@ class FeedParser(abc.ABC):
         [
             "domain",
             "ip",
+            "ip-dst",
+            "ip-dst|port",
             "url",
         ]
     )
