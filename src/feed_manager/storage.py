@@ -20,6 +20,11 @@ def get_storage_layer(
     read_write: Optional[bool] = False,
 ):
     """Utility method to get the storage layer given some options."""
+    logger = logging.getLogger(__name__)
+    logger.info(
+        "Creating storage layer with input_string='%s',path='%s',read_write=%s",
+        input_string, path, read_write,
+    )
 
     # http readers start with http
     if input_string.startswith("http"):
