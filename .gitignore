@@ -5,3 +5,4 @@ src/misp_feed_manager.egg-info
 tests/__pycache__
 src/feed_manager/generator/__pycache__
 venv
+.hypothesis

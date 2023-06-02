@@ -23,7 +23,9 @@ def get_storage_layer(
     logger = logging.getLogger(__name__)
     logger.info(
         "Creating storage layer with input_string='%s',path='%s',read_write=%s",
-        input_string, path, read_write,
+        input_string,
+        path,
+        read_write,
     )
 
     # http readers start with http

@@ -59,7 +59,7 @@ class InMemoryStorageLayer(storage.AbstractWriter):
 class TestGenerator(unittest.TestCase):
     """Class to test the generator module."""
 
-    def test_two_attributes(self):
+    def test__attributes__two_days(self):
         """Test adding two attributes in two different days."""
         storage_layer = InMemoryStorageLayer()
         feed_generator = generator.DailyFeedGenerator(storage_layer)
@@ -71,6 +71,40 @@ class TestGenerator(unittest.TestCase):
         self.assertEqual(len(storage_layer.manifest.keys()), 2)
         self.assertEqual(len(storage_layer.events), 2)
         self.assertEqual(len(storage_layer.hashes), 2)
+
+    def test_attributes__flush_twice(self):
+        """Test adding two attributes in one day and flushing twice."""
+        storage_layer = InMemoryStorageLayer()
+        feed_generator = generator.DailyFeedGenerator(storage_layer)
+        feed_generator.add_attribute("md5", "a" * 32)
+        feed_generator.flush()
+        feed_generator.add_attribute("md5", "b" * 32)
+        feed_generator.flush()
+        self.assertEqual(len(storage_layer.manifest.keys()), 1)
+        self.assertEqual(len(storage_layer.events), 1)
+        self.assertEqual(len(storage_layer.hashes), 2)
+
+    def test_attributes__flush_once(self):
+        """Test adding two attributes in one day and flushing once."""
+        storage_layer = InMemoryStorageLayer()
+        feed_generator = generator.DailyFeedGenerator(storage_layer)
+        feed_generator.add_attribute("md5", "a" * 32)
+        feed_generator.add_attribute("md5", "b" * 32)
+        feed_generator.flush()
+        self.assertEqual(len(storage_layer.manifest.keys()), 1)
+        self.assertEqual(len(storage_layer.events), 1)
+        self.assertEqual(len(storage_layer.hashes), 2)
+
+    def test_attributes__flush_once__miss(self):
+        """Test adding two attributes in one day and flushing twice but once too late."""
+        storage_layer = InMemoryStorageLayer()
+        feed_generator = generator.DailyFeedGenerator(storage_layer)
+        feed_generator.add_attribute("md5", "a" * 32)
+        feed_generator.flush()
+        feed_generator.add_attribute("md5", "b" * 32)
+        self.assertEqual(len(storage_layer.manifest.keys()), 1)
+        self.assertEqual(len(storage_layer.events), 1)
+        self.assertEqual(len(storage_layer.hashes), 1)
 
 
 class TestFeedUtils(unittest.TestCase):

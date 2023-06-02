@@ -207,7 +207,7 @@ class PeriodicFeedGenerator(AbstractFeedGenerator, abc.ABC):
     @classmethod
     def get_bucket_from_timestamp(cls, timestamp: int) -> str:
         """Get the bucket given a timestamp."""
-        return cls.get_bucket(datetime.datetime.fromtimestamp(timestamp))
+        return cls.get_bucket(datetime.datetime.utcfromtimestamp(timestamp))
 
     @classmethod
     def get_event_metadata(
@@ -400,4 +400,6 @@ class DailyFeedGenerator(PeriodicFeedGenerator):
     @classmethod
     def parse_bucket(cls, date_str: str) -> datetime.datetime:
         """Implement interface"""
-        return datetime.datetime.strptime(date_str, cls.BUCKET_FMT)
+        return datetime.datetime.strptime(date_str, cls.BUCKET_FMT).replace(
+            tzinfo=datetime.timezone.utc
+        )
