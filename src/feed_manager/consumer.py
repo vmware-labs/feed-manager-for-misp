@@ -269,6 +269,36 @@ class FeedConsumer:
         self._storage_layer = storage_layer
 
     @classmethod
+    def _round_timestamp_to_day(cls, timestamp: int) -> int:
+        """Round timestamp at day granularity level."""
+        return timestamp - (timestamp % (3600 * 24))
+
+    @classmethod
+    def _get_date_range(
+        cls,
+        start_date: datetime.datetime,
+        end_date: datetime.datetime,
+    ) -> List[datetime.datetime]:
+        """Get a date range."""
+        # Optimization: a query with end_ts set at the very beginning of a day would include
+        # that day, while the query intent was probably just to include the entire
+        # previous day in the query range. Let's reset end_ts to the end of the previous day in
+        # this case.
+        if end_date.hour == end_date.minute == end_date.second == 0:
+            end_date -= datetime.timedelta(seconds=1)
+
+        # Enforce that start_date <= end_date
+        if start_date > end_date:
+            end_date = start_date
+
+        end_range_day = datetime.datetime(end_date.year, end_date.month, end_date.day, 23, 59, 59)
+        dates_in_range = [
+            start_date + datetime.timedelta(days=n)
+            for n in range((end_range_day - start_date).days + 1)
+        ]
+        return dates_in_range
+
+    @classmethod
     def _infer_parser_class(cls, event_data: Dict) -> Type[BaseFeedParserSubType]:
         """Return the parser class able to read the feed."""
         objects_data = event_data["Event"].get("Object", [])
@@ -291,6 +321,23 @@ class FeedConsumer:
     def _get_events_since(self, date_object: datetime.datetime) -> List[Dict]:
         """Return list of event data objects."""
         event_uuids = self._get_event_uuids_since(date_object.timestamp())
+        return [self._storage_layer.load_event(x) for x in event_uuids]
+
+    def _get_event_uuids_on(self, timestamp: float = None) -> List[str]:
+        """Read the manifest and return the event uuid matching the filter."""
+        event_uuids = []
+        target_timestamp = self._round_timestamp_to_day(int(timestamp))
+        for event_uuid, event_data in self._storage_layer.load_manifest().items():
+            if (
+                not timestamp or
+                self._round_timestamp_to_day(event_data["timestamp"]) == target_timestamp
+            ):
+                event_uuids.append(event_uuid)
+        return event_uuids
+
+    def _get_events_on(self, date_object: datetime.datetime) -> List[Dict]:
+        """Return list of event data objects."""
+        event_uuids = self._get_event_uuids_on(date_object.timestamp())
         return [self._storage_layer.load_event(x) for x in event_uuids]
 
     @classmethod
@@ -335,3 +382,36 @@ class FeedConsumer:
             except EmptyFeedException:
                 self._logger.warning("The feed '%s' is empty", event_data["Event"]["info"])
         return ret
+
+    def get_items_on(
+        self,
+        date_objects: List[datetime.datetime],
+        attribute_type: Optional[str] = None,
+        galaxy_name: Optional[str] = None,
+    ) -> List[Dict]:
+        """Return the items contained in the feed."""
+        ret = []
+        for date_object in date_objects:
+            for event_data in self._get_events_on(date_object):
+                parser_class = self._infer_parser_class(event_data)
+                with parser_class(event_data) as parser:
+                    for indicator in parser:
+                        if self._filter_indicator(indicator, attribute_type, galaxy_name):
+                            ret.append(indicator)
+        if not ret:
+            self._logger.warning("The feed is empty")
+        return ret
+
+    def get_items(
+        self,
+        start_date: datetime.datetime,
+        end_date: datetime.datetime,
+        attribute_type: Optional[str] = None,
+        galaxy_name: Optional[str] = None,
+    ) -> List[Dict]:
+        """Return the items contained in the feed."""
+        return self.get_items_on(
+            date_objects=self._get_date_range(start_date, end_date),
+            attribute_type=attribute_type,
+            galaxy_name=galaxy_name,
+        )
